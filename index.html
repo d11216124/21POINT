@@ -509,6 +509,10 @@
                 this.updateUI();
             }
 
+            getHandDisplayName(index) {
+                return `Hand ${index + 1}`;
+            }
+
             startRound() {
                 if (this.baseBet > this.bankroll) {
                     this.addLog('籌碼不足，無法下注！', 'error');
@@ -571,11 +575,11 @@
                 const card = this.shoe.draw();
                 hand.addCard(card);
                 
-                this.addLog(`Hand ${this.activeHandIndex + 1} 補牌: ${card.toString()}`);
+                this.addLog(`${this.getHandDisplayName(this.activeHandIndex)} 補牌: ${card.toString()}`);
 
                 if (hand.isBust()) {
                     hand.status = 'bust';
-                    this.addLog(`Hand ${this.activeHandIndex + 1} 爆牌！`, 'error');
+                    this.addLog(`${this.getHandDisplayName(this.activeHandIndex)} 爆牌！`, 'error');
                     this.nextHand();
                 } else {
                     this.updateUI();
@@ -587,7 +591,7 @@
 
                 const hand = this.playerHands[this.activeHandIndex];
                 hand.status = 'stand';
-                this.addLog(`Hand ${this.activeHandIndex + 1} 停牌，點數: ${hand.getScore().best}`);
+                this.addLog(`${this.getHandDisplayName(this.activeHandIndex)} 停牌，點數: ${hand.getScore().best}`);
                 
                 this.nextHand();
             }
@@ -620,7 +624,7 @@
                 // Insert new hand after current hand
                 this.playerHands.splice(this.activeHandIndex + 1, 0, newHand);
                 
-                this.addLog(`分牌成功！追加下注: ${hand.bet}`, 'important');
+                this.addLog(`${this.getHandDisplayName(this.activeHandIndex)} 分牌成功！追加下注: ${hand.bet}`, 'important');
                 this.updateUI();
             }
 
@@ -634,7 +638,7 @@
                     this.updateUI();
                     setTimeout(() => this.dealerTurn(), 1000);
                 } else {
-                    this.addLog(`切換到 Hand ${this.activeHandIndex + 1}`);
+                    this.addLog(`切換到 ${this.getHandDisplayName(this.activeHandIndex)}`);
                     this.updateUI();
                 }
             }
@@ -739,7 +743,7 @@
                     totalWin += payout;
 
                     this.addLog(
-                        `Hand ${index + 1}: ${result} (${playerScore} vs ${dealerScore}) ` +
+                        `${this.getHandDisplayName(index)}: ${result} (${playerScore} vs ${dealerScore}) ` +
                         `${profit >= 0 ? '+' : ''}${profit}`,
                         profit > 0 ? 'important' : (profit < 0 ? 'error' : '')
                     );
