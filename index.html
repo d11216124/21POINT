@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>21點 Blackjack</title>
+    <title>21點 / 10點半</title>
     <style>
         * {
             margin: 0;
@@ -296,13 +296,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>🃏 21點 Blackjack 🃏</h1>
+        <h1>🃏 <span id="gameTitle">21點 Blackjack</span> 🃏</h1>
         
         <div class="game-container">
             <!-- Settings Panel -->
             <div class="settings-panel panel">
                 <h2>⚙️ 設定</h2>
                 
+                <div class="setting-group">
+                    <label for="gameMode">遊戲模式 (Game Mode)</label>
+                    <select id="gameMode">
+                        <option value="blackjack" selected>21點 (Blackjack)</option>
+                        <option value="tenHalf">10點半 (Ten and a Half)</option>
+                    </select>
+                </div>
+
                 <div class="setting-group">
                     <label for="deckCount">牌副數 (Deck Count)</label>
                     <select id="deckCount">
@@ -314,7 +322,7 @@
                     </select>
                 </div>
 
-                <div class="setting-group">
+                <div class="setting-group" id="blackjackSettings">
                     <label for="dealerRule">莊家規則 (Dealer Rule)</label>
                     <select id="dealerRule">
                         <option value="S17" selected>S17 (Stand on soft 17)</option>
@@ -322,11 +330,19 @@
                     </select>
                 </div>
 
-                <div class="setting-group">
+                <div class="setting-group" id="blackjackPayoutGroup">
                     <label for="blackjackPayout">Blackjack 派彩</label>
                     <select id="blackjackPayout">
                         <option value="1.5" selected>3:2 (1.5倍)</option>
                         <option value="1">1:1 (1倍)</option>
+                    </select>
+                </div>
+
+                <div class="setting-group" id="tenHalfSettings" style="display: none;">
+                    <label for="dealerThreshold">莊家補牌門檻</label>
+                    <select id="dealerThreshold">
+                        <option value="8.5" selected>≤ 8.5 必須補牌</option>
+                        <option value="9.0">≤ 9.0 必須補牌</option>
                     </select>
                 </div>
 
@@ -393,10 +409,18 @@
                 this.rank = rank;
             }
 
-            getValue() {
-                if (this.rank === 'A') return 1;
-                if (['J', 'Q', 'K'].includes(this.rank)) return 10;
-                return parseInt(this.rank);
+            getValue(gameMode = 'blackjack') {
+                if (gameMode === 'tenHalf') {
+                    // Ten and a Half scoring
+                    if (this.rank === 'A') return 1;
+                    if (['J', 'Q', 'K'].includes(this.rank)) return 0.5;
+                    return parseInt(this.rank);
+                } else {
+                    // Blackjack scoring
+                    if (this.rank === 'A') return 1;
+                    if (['J', 'Q', 'K'].includes(this.rank)) return 10;
+                    return parseInt(this.rank);
+                }
             }
 
             toString() {
@@ -443,10 +467,11 @@
         }
 
         class Hand {
-            constructor(bet = 0) {
+            constructor(bet = 0, gameMode = 'blackjack') {
                 this.cards = [];
                 this.bet = bet;
                 this.status = 'active';
+                this.gameMode = gameMode;
             }
 
             addCard(card) {
@@ -454,30 +479,49 @@
             }
 
             getScore() {
-                let sum = 0;
-                let aces = 0;
+                if (this.gameMode === 'tenHalf') {
+                    // Ten and a Half scoring - simple sum
+                    let sum = 0;
+                    for (let card of this.cards) {
+                        sum += card.getValue('tenHalf');
+                    }
+                    return { best: sum, isSoft: false };
+                } else {
+                    // Blackjack scoring with A=1/11
+                    let sum = 0;
+                    let aces = 0;
 
-                for (let card of this.cards) {
-                    sum += card.getValue();
-                    if (card.rank === 'A') aces++;
+                    for (let card of this.cards) {
+                        sum += card.getValue('blackjack');
+                        if (card.rank === 'A') aces++;
+                    }
+
+                    let isSoft = false;
+                    while (aces > 0 && sum + 10 <= 21) {
+                        sum += 10;
+                        aces--;
+                        isSoft = true;
+                    }
+
+                    return { best: sum, isSoft: isSoft };
                 }
-
-                let isSoft = false;
-                while (aces > 0 && sum + 10 <= 21) {
-                    sum += 10;
-                    aces--;
-                    isSoft = true;
-                }
-
-                return { best: sum, isSoft: isSoft };
             }
 
             isBlackjack() {
-                return this.cards.length === 2 && this.getScore().best === 21;
+                return this.gameMode === 'blackjack' && 
+                       this.cards.length === 2 && 
+                       this.getScore().best === 21;
+            }
+
+            isTenHalf() {
+                return this.gameMode === 'tenHalf' && 
+                       this.cards.length === 2 && 
+                       this.getScore().best === 10.5;
             }
 
             isBust() {
-                return this.getScore().best > 21;
+                const threshold = this.gameMode === 'tenHalf' ? 10.5 : 21;
+                return this.getScore().best > threshold;
             }
 
             canSplit() {
@@ -487,13 +531,15 @@
         }
 
         class Game {
-            constructor() {
+            constructor(gameMode = 'blackjack') {
+                this.gameMode = gameMode;
                 this.bankroll = 1000;
                 this.baseBet = 10;
                 this.rules = {
                     deckCount: 4,
                     dealerHitsSoft17: false, // S17 by default
-                    blackjackPayout: 1.5
+                    blackjackPayout: 1.5,
+                    tenHalfThreshold: 8.5 // For Ten-and-Half
                 };
                 this.shoe = null;
                 this.dealerHand = null;
@@ -505,7 +551,11 @@
 
             initialize() {
                 this.shoe = new Shoe(this.rules.deckCount);
-                this.addLog('遊戲初始化完成');
+                const gameNames = {
+                    'blackjack': '21點 Blackjack',
+                    'tenHalf': '10點半 Ten and a Half'
+                };
+                this.addLog(`${gameNames[this.gameMode]} 遊戲初始化完成`);
                 this.updateUI();
             }
 
@@ -521,8 +571,8 @@
 
                 this.phase = 'dealing';
                 this.bankroll -= this.baseBet;
-                this.dealerHand = new Hand();
-                this.playerHands = [new Hand(this.baseBet)];
+                this.dealerHand = new Hand(0, this.gameMode);
+                this.playerHands = [new Hand(this.baseBet, this.gameMode)];
                 this.activeHandIndex = 0;
 
                 this.addLog(`下注成功！金額: ${this.baseBet}`, 'important');
@@ -537,34 +587,59 @@
                 
                 this.updateUI();
                 
-                // Check for initial blackjacks
-                setTimeout(() => this.checkInitialBlackjack(), 500);
+                // Check for initial special hands
+                setTimeout(() => this.checkInitialSpecial(), 500);
                 
                 return true;
             }
 
-            checkInitialBlackjack() {
-                const playerBJ = this.playerHands[0].isBlackjack();
-                const dealerBJ = this.dealerHand.isBlackjack();
+            checkInitialSpecial() {
+                if (this.gameMode === 'blackjack') {
+                    const playerBJ = this.playerHands[0].isBlackjack();
+                    const dealerBJ = this.dealerHand.isBlackjack();
 
-                if (playerBJ && dealerBJ) {
-                    this.addLog('玩家和莊家都是Blackjack！平手！', 'important');
-                    this.playerHands[0].status = 'blackjack';
-                    this.phase = 'settling';
-                    this.settle();
-                } else if (playerBJ) {
-                    this.addLog('玩家Blackjack！', 'important');
-                    this.playerHands[0].status = 'blackjack';
-                    this.phase = 'dealerTurn';
-                    this.dealerTurn();
-                } else if (dealerBJ) {
-                    this.addLog('莊家Blackjack！', 'important');
-                    this.phase = 'settling';
-                    this.settle();
-                } else {
-                    this.phase = 'playerTurn';
-                    this.addLog('輪到玩家操作');
-                    this.updateUI();
+                    if (playerBJ && dealerBJ) {
+                        this.addLog('玩家和莊家都是Blackjack！平手！', 'important');
+                        this.playerHands[0].status = 'blackjack';
+                        this.phase = 'settling';
+                        this.settle();
+                    } else if (playerBJ) {
+                        this.addLog('玩家Blackjack！', 'important');
+                        this.playerHands[0].status = 'blackjack';
+                        this.phase = 'dealerTurn';
+                        this.dealerTurn();
+                    } else if (dealerBJ) {
+                        this.addLog('莊家Blackjack！', 'important');
+                        this.phase = 'settling';
+                        this.settle();
+                    } else {
+                        this.phase = 'playerTurn';
+                        this.addLog('輪到玩家操作');
+                        this.updateUI();
+                    }
+                } else if (this.gameMode === 'tenHalf') {
+                    const playerTH = this.playerHands[0].isTenHalf();
+                    const dealerTH = this.dealerHand.isTenHalf();
+
+                    if (playerTH && dealerTH) {
+                        this.addLog('玩家和莊家都是10點半！平手！', 'important');
+                        this.playerHands[0].status = 'tenhalf';
+                        this.phase = 'settling';
+                        this.settle();
+                    } else if (playerTH) {
+                        this.addLog('玩家10點半！', 'important');
+                        this.playerHands[0].status = 'tenhalf';
+                        this.phase = 'dealerTurn';
+                        this.dealerTurn();
+                    } else if (dealerTH) {
+                        this.addLog('莊家10點半！', 'important');
+                        this.phase = 'settling';
+                        this.settle();
+                    } else {
+                        this.phase = 'playerTurn';
+                        this.addLog('輪到玩家操作');
+                        this.updateUI();
+                    }
                 }
             }
 
@@ -614,7 +689,7 @@
                 this.bankroll -= hand.bet;
                 
                 // Create new hand with second card
-                const newHand = new Hand(hand.bet);
+                const newHand = new Hand(hand.bet, this.gameMode);
                 newHand.addCard(hand.cards.pop());
                 
                 // Deal new cards to both hands
@@ -669,11 +744,18 @@
 
                 const shouldHit = () => {
                     const score = this.dealerHand.getScore();
-                    if (score.best < 17) return true;
-                    if (score.best > 17) return false;
-                    // score.best === 17
-                    if (this.rules.dealerHitsSoft17 && score.isSoft) return true;
-                    return false;
+                    
+                    if (this.gameMode === 'tenHalf') {
+                        // Ten and a Half rules
+                        return score.best <= this.rules.tenHalfThreshold;
+                    } else {
+                        // Blackjack rules
+                        if (score.best < 17) return true;
+                        if (score.best > 17) return false;
+                        // score.best === 17
+                        if (this.rules.dealerHitsSoft17 && score.isSoft) return true;
+                        return false;
+                    }
                 };
 
                 const drawCard = () => {
@@ -707,14 +789,16 @@
                 
                 const dealerScore = this.dealerHand.getScore().best;
                 const dealerBust = this.dealerHand.isBust();
-                const dealerBlackjack = this.dealerHand.isBlackjack();
+                const dealerSpecial = (this.gameMode === 'blackjack') ? 
+                    this.dealerHand.isBlackjack() : this.dealerHand.isTenHalf();
 
                 let totalWin = 0;
 
                 this.playerHands.forEach((hand, index) => {
                     const playerScore = hand.getScore().best;
                     const playerBust = hand.isBust();
-                    const playerBlackjack = hand.status === 'blackjack';
+                    const playerSpecial = (this.gameMode === 'blackjack') ? 
+                        (hand.status === 'blackjack') : (hand.status === 'tenhalf');
 
                     let result = '';
                     let payout = 0;
@@ -725,9 +809,14 @@
                     } else if (dealerBust) {
                         result = '贏';
                         payout = hand.bet * 2;
-                    } else if (playerBlackjack && !dealerBlackjack) {
-                        result = 'Blackjack贏';
-                        payout = hand.bet * (1 + this.rules.blackjackPayout);
+                    } else if (playerSpecial && !dealerSpecial) {
+                        if (this.gameMode === 'blackjack') {
+                            result = 'Blackjack贏';
+                            payout = hand.bet * (1 + this.rules.blackjackPayout);
+                        } else {
+                            result = '10點半贏';
+                            payout = hand.bet * 3; // 2x payout for Ten-and-Half
+                        }
                     } else if (playerScore > dealerScore) {
                         result = '贏';
                         payout = hand.bet * 2;
@@ -871,6 +960,9 @@
                     } else if (hand.status === 'blackjack') {
                         statusText = 'Blackjack!';
                         statusClass = 'blackjack';
+                    } else if (hand.status === 'tenhalf') {
+                        statusText = '10點半!';
+                        statusClass = 'blackjack';
                     } else if (hand.status === 'stand') {
                         statusText = '停牌';
                         statusClass = 'stand';
@@ -947,12 +1039,37 @@
         // Game Instance & Event Handlers
         // ===========================
 
-        let game = new Game();
+        let game = new Game('blackjack');
 
         window.addEventListener('DOMContentLoaded', () => {
             game.initialize();
 
             // Settings event listeners
+            document.getElementById('gameMode').addEventListener('change', (e) => {
+                const newMode = e.target.value;
+                const savedBankroll = game.bankroll;
+                
+                // Create new game with the selected mode
+                game = new Game(newMode);
+                game.bankroll = savedBankroll;
+                game.initialize();
+                
+                // Update UI based on game mode
+                const isBlackjack = newMode === 'blackjack';
+                document.getElementById('blackjackSettings').style.display = isBlackjack ? 'flex' : 'none';
+                document.getElementById('blackjackPayoutGroup').style.display = isBlackjack ? 'flex' : 'none';
+                document.getElementById('tenHalfSettings').style.display = isBlackjack ? 'none' : 'flex';
+                
+                // Update title
+                const titles = {
+                    'blackjack': '21點 Blackjack',
+                    'tenHalf': '10點半 Ten and a Half'
+                };
+                document.getElementById('gameTitle').textContent = titles[newMode];
+                
+                game.addLog(`切換到${titles[newMode]}模式`);
+            });
+
             document.getElementById('deckCount').addEventListener('change', (e) => {
                 game.rules.deckCount = parseInt(e.target.value);
                 game.shoe = new Shoe(game.rules.deckCount);
@@ -967,6 +1084,11 @@
             document.getElementById('blackjackPayout').addEventListener('change', (e) => {
                 game.rules.blackjackPayout = parseFloat(e.target.value);
                 game.addLog(`Blackjack派彩設定為: ${e.target.value === '1.5' ? '3:2' : '1:1'}`);
+            });
+
+            document.getElementById('dealerThreshold').addEventListener('change', (e) => {
+                game.rules.tenHalfThreshold = parseFloat(e.target.value);
+                game.addLog(`莊家補牌門檻設定為: ≤${e.target.value}`);
             });
 
             document.getElementById('betAmount').addEventListener('change', (e) => {
